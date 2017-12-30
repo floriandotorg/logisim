@@ -9,14 +9,14 @@ import (
 type Rom struct {
   addr logisim.ReadOnlyBus
   data logisim.Bus
-  re logisim.ReadOnlyBus
+  outputEnable logisim.ReadOnlyBus
   clk logisim.TriggerLine
 
   contents []uint64
 }
 
-func NewRom(addr logisim.ReadOnlyBus, data logisim.Bus, re logisim.ReadOnlyBus, clk logisim.TriggerLine, contents []uint64) *Rom {
-  if re.Width() != 1 {
+func NewRom(addr logisim.ReadOnlyBus, data logisim.Bus, outputEnable logisim.ReadOnlyBus, clk logisim.TriggerLine, contents []uint64) *Rom {
+  if outputEnable.Width() != 1 {
     panic("FU")
   }
   if len(contents) != 1 << uint64(addr.Width()) {
@@ -25,7 +25,7 @@ func NewRom(addr logisim.ReadOnlyBus, data logisim.Bus, re logisim.ReadOnlyBus, 
   rom := &Rom{
     addr: addr,
     data: data,
-    re: re,
+    outputEnable: outputEnable,
     clk: clk,
     contents: contents,
   }
@@ -34,7 +34,7 @@ func NewRom(addr logisim.ReadOnlyBus, data logisim.Bus, re logisim.ReadOnlyBus, 
 }
 
 func (r *Rom) onTick() {
-  status := r.re.Read()
+  status := r.outputEnable.Read()
   addr := r.addr.Read()
   if status == 0x01 {
     r.data.Write(r.contents[addr])

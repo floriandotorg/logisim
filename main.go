@@ -44,20 +44,19 @@ func (r *Rom) onTick() {
 type Ram struct {
   addr logisim.ReadOnlyBus
   data logisim.Bus
-  ctrl logisim.ReadOnlyBus
+  writeEnable logisim.ReadOnlyBus
+  outputEnable logisim.ReadOnlyBus
   clk logisim.TriggerLine
 
   contents []uint64
 }
 
-func NewRam(addr logisim.ReadOnlyBus, data logisim.Bus, ctrl logisim.ReadOnlyBus, clk logisim.TriggerLine) *Ram {
-  if ctrl.Width() != 2 {
-    panic("FU")
-  }
+func NewRam(addr logisim.ReadOnlyBus, data logisim.Bus, writeEnable, outputEnable logisim.ReadOnlyBus, clk logisim.TriggerLine) *Ram {
   ram := &Ram{
     addr: addr,
     data: data,
-    ctrl: ctrl,
+    writeEnable: writeEnable,
+    outputEnable: outputEnable,
     clk: clk,
     contents: make([]uint64, 1 << uint64(addr.Width())),
   }
@@ -66,11 +65,10 @@ func NewRam(addr logisim.ReadOnlyBus, data logisim.Bus, ctrl logisim.ReadOnlyBus
 }
 
 func (r *Ram) onTick() {
-  status := r.ctrl.Read()
   addr := r.addr.Read()
-  if status == 0x01 {
+  if r.outputEnable.Read() == 1 {
     r.data.Write(r.contents[addr])
-  } else if status == 0x02 {
+  } else if r.writeEnable.Read() == 1 {
     r.contents[addr] = r.data.Read()
   }
 }
@@ -89,13 +87,21 @@ func (r *Ram) String() string {
   return output.String()
 }
 
+// OE = Output Enable
+// WE = Write Enable
+
+const MEM_OE = 0
+const MEM_WE = 1
+
 func main() {
   clkLine := logisim.NewTriggerLine()
   clk := logisim.NewClock(clkLine)
+
+  controlWord := logisim.NewBus(20)
   addr := logisim.NewBus(7)
   data := logisim.NewBus(8)
-  ctrl := logisim.NewBus(2)
-  ram := NewRam(addr, data, ctrl, clkLine)
+
+  ram := NewRam(addr, data, controlWord.Branch(MEM_WE), controlWord.Branch(MEM_OE), clkLine)
 
   fmt.Print(ram)
 
@@ -105,7 +111,7 @@ func main() {
 
   fmt.Print(ram)
 
-  ctrl.Write(0x02)
+  controlWord.Write(1 << MEM_WE)
   clk.Tick()
 
   fmt.Print(ram)

@@ -2,305 +2,96 @@ package main
 
 import (
   "fmt"
-  "strings"
-  "strconv"
   "./bitarray"
+  "./logisim"
 )
 
-type pinMap map[string]uint64
-type stateType map[string]bitarray.BitArray
-type changeSet stateType
-type connectionArray map[string][]string
-type changeFuncType func (changeSet)
-type triggerType int
-const (
-  EVERY_CHANGE triggerType = 0
-  RISING_EDGE  triggerType = 1
-  FALLING_EDGE triggerType = 2
-)
-type triggerMap map[triggerType][]string
+type Ram struct {
+  addr logisim.Bus
+  data logisim.Bus
+  ctrl logisim.Bus
+  clk logisim.TriggerLine
 
-type comp interface {
-  getName() string
-  getPins() pinMap
+  contents []uint64
 }
 
-type triggeredComp interface {
-  comp
-  getTrigger() triggerMap
-  run(state stateType) changeSet
+func NewRam(addr logisim.Bus, data logisim.Bus, ctrl logisim.Bus, clk logisim.TriggerLine) *Ram {
+  if ctrl.Size() != 2 {
+    panic("FU")
+  }
+  ram := &Ram{
+    addr: addr,
+    data: data,
+    ctrl: ctrl,
+    clk: clk,
+    contents: make([]uint64, 1 << uint64(addr.Size())),
+  }
+  clk.OnRisingEdge(ram.onTick)
+  return ram
 }
 
-type triggeringComp interface {
-  comp
-  setChangeFunc(changeFunc changeFuncType)
+func (r *Ram) onTick() {
+  status := r.ctrl.Read().Get()
+  addr := r.addr.Read().Get()
+  if status == 0x01 {
+    // DAS muss schöner gehen!
+    //r.data.Write(bitarray.NewBitArrayWithVal(r.data.Size(), r.contents[addr]))
+    fick_dich_als_workaround_for_now(r.data, r.contents[addr])
+  } else if status == 0x02 {
+    r.contents[addr] = r.data.Read().Get()
+  fmt.Println(r.contents)
+  }
 }
 
-// func (s* stateType) String() string {
-//   buffer := bytes.Buffer{}
-//   buffer.WriteString("{\n")
-//   for name, val := range *s {
-//     buffer.WriteString(fmt.Sprintf("  %s: %v,\n", name, val))
-//   }
-//   buffer.WriteString("}")
-//   return buffer.String()
-// }
-
-// func (c* changeSet) String() string {
-//   return (*stateType)(c).String()
-// }
-
-type engine struct {
-  state stateType
-  pinToState map[string]string
-  triggeredComponents map[triggerType]map[string][]triggeredComp
-  runQueue []changeSet
+func tick(clk logisim.TriggerLine) {
+  clk.Write(true)
+  clk.Write(false)
 }
 
-func newEngine(components []comp, connections connectionArray) *engine {
-  engine := new(engine)
-  engine.init(components, connections)
-  return engine
-}
-
-func (e *engine) init(components []comp, connections connectionArray) {
-  pins := make(pinMap)
-  for _, comp := range components {
-    for pinName, pinWidth := range comp.getPins() {
-      pins[fmt.Sprintf("%s.%s", comp.getName(), pinName)] = pinWidth
+func (r *Ram) Print() {
+  for i := 0; i < len(r.contents); i += 0 {
+    fmt.Printf("%08x:", i)
+    for j := 0; j < 16; j++ {
+      fmt.Printf(" %02x", r.contents[i])
+      i++
     }
+    fmt.Println()
   }
-
-  e.state = make(stateType)
-  e.pinToState = make(map[string]string)
-  for name, connection := range connections {
-    bitarr := bitarray.NewBitArray(pins[connection[0]])
-    e.state[name] = bitarr
-
-    for _, pinName := range connection {
-      if pins[pinName] != bitarr.Size() {
-        panic(fmt.Sprintf("bus width not matching: %s (%d), pin: %s (%d)", name, bitarr.Size(), pinName, pins[pinName]))
-      }
-      e.pinToState[pinName] = name
-    }
-  }
-
-  e.triggeredComponents = map[triggerType]map[string][]triggeredComp{
-    EVERY_CHANGE: map[string][]triggeredComp{},
-    RISING_EDGE: map[string][]triggeredComp{},
-    FALLING_EDGE: map[string][]triggeredComp{},
-  }
-
-  for _, comp := range components {
-    if tcomp, ok := comp.(triggeredComp); ok {
-      for ttype, pins := range tcomp.getTrigger() {
-        for _, pin := range pins {
-          e.triggeredComponents[ttype][fmt.Sprintf("%s.%s", tcomp.getName(), pin)] = append(e.triggeredComponents[ttype][pin], tcomp)
-          // if e.triggeredComponents[ttype][pin] == nil {
-          //   e.triggeredComponents[ttype][pin] = []triggeredComp{tcomp}
-          // }
-        }
-      }
-    }
-  }
-
-  for _, comp := range components {
-    if tcomp, ok := comp.(triggeringComp); ok {
-      tcomp.setChangeFunc(func(pinChangeSet changeSet) {
-        chgSet := changeSet{}
-        for name, val := range pinChangeSet {
-          chgSet[e.pinToState[fmt.Sprintf("%s.%s", tcomp.getName(), name)]] = val
-        }
-        e.runQueue = append(e.runQueue, chgSet)
-      })
-    }
-  }
-
-  e.runQueue = []changeSet{}
-
-  fmt.Printf("Initial State\n%v\n", e.state)
+  fmt.Println()
 }
 
-func mergeStates(a, b stateType) {
-  for name, val := range b {
-    if _, ok := a[name]; ok {
-      a[name] = a[name].Or(val)
-    } else {
-      a[name] = val
-    }
-  }
-}
-
-func (e *engine) runComponents(comps []triggeredComp) changeSet {
-  changeSets := []changeSet{}
-  for _, comp := range comps {
-    state := make(stateType)
-    for name, stateName := range e.pinToState {
-      if (strings.Contains(name, comp.getName())) {
-        state[strings.Replace(name, fmt.Sprintf("%s.", comp.getName()), "", -1)] = e.state[stateName]
-      }
-    }
-
-    if chgSet := comp.run(state); chgSet != nil {
-      changeSets = append(changeSets, chgSet)
-    }
-  }
-
-  master := changeSet{}
-  for _, chgSet := range changeSets {
-    mergeStates(stateType(master), stateType(chgSet))
-  }
-
-  masterState := changeSet{}
-  for name, val := range master {
-    masterState[e.pinToState[name]] = val
-  }
-
-  for name, val := range masterState {
-    if (e.state[name].Equals(val)) {
-      delete(masterState, name)
-    }
-  }
-
-  return masterState
-}
-
-func (e *engine) step(chgSet changeSet) {
-  fmt.Printf("Step changeSet\n%v\n", chgSet)
-
-  for name, val := range chgSet {
-    if (e.state[name].Equals(val)) {
-      delete(chgSet, name)
-    }
-  }
-
-  if len(chgSet) > 0 {
-    pins := []string{}
-    for name := range chgSet {
-      for pin, state := range e.pinToState {
-        if state == name {
-          pins = append(pins, pin)
-        }
-      }
-    }
-
-    triggeredComponents := []triggeredComp{}
-    for _, pin := range pins {
-      if trigger := e.triggeredComponents[EVERY_CHANGE][pin]; trigger != nil {
-        triggeredComponents = append(triggeredComponents, trigger...)
-      }
-    }
-
-    mergeStates(e.state, stateType(chgSet))
-
-    master := e.runComponents(triggeredComponents)
-
-    if len(master) > 0 {
-      mergeStates(e.state, stateType(master))
-      fmt.Printf("Master\n%v", master)
-      fmt.Printf("State\n%v", e.state)
-      e.step(master)
-    }
-  }
-}
-
-func (e *engine) run() {
-  for len(e.runQueue) > 0 {
-    e.step(e.runQueue[0])
-    e.runQueue = e.runQueue[1:]
-  }
-}
-
-type dipSwitch struct {
-  name string
-  pins pinMap
-  changeFunc changeFuncType
-}
-
-func newDipSwitch(name string, n int) *dipSwitch {
-  swt := new(dipSwitch)
-  swt.name = name
-  swt.pins = make(pinMap)
-  for ;n > 0; n-- {
-    swt.pins[strconv.Itoa(n)] = 1
-  }
-  return swt
-}
-
-func (d *dipSwitch) getName() string {
-  return fmt.Sprintf("dip_switch.%s", d.name)
-}
-
-func (d *dipSwitch) getPins() pinMap {
-  return d.pins
-}
-
-func (d *dipSwitch) setChangeFunc(changeFunc changeFuncType) {
-  d.changeFunc = changeFunc
-}
-
-func (d *dipSwitch) setSwt(n int, to bool) {
-  chgSet := changeSet{}
-  if to {
-    chgSet[strconv.Itoa(n)] = bitarray.NewBitArrayWithVal(1, 1)
-  } else {
-    chgSet[strconv.Itoa(n)] = bitarray.NewBitArray(1)
-  }
-  d.changeFunc(chgSet)
-}
-
-type ledArray struct {
-  name string
-  pins pinMap
-}
-
-func newLedArray(name string, n int) *ledArray {
-  leds := new(ledArray)
-  leds.name = name
-  leds.pins = make(pinMap)
-  for ;n > 0; n-- {
-    leds.pins[strconv.Itoa(n)] = 1
-  }
-  return leds
-}
-
-func (l *ledArray) getName() string {
-  return fmt.Sprintf("led_array.%s", l.name)
-}
-
-func (l *ledArray) getPins() pinMap {
-  return l.pins
-}
-
-func (l *ledArray) getTrigger() triggerMap {
-  triggers := make([]string, len(l.pins))
-  n := 0
-  for name := range l.pins {
-    triggers[n] = name
-    n++
-  }
-  return triggerMap{
-    EVERY_CHANGE: triggers,
-  }
-}
-
-func (l *ledArray) run(state stateType) changeSet {
-  fmt.Printf("LED\n%v\n", state)
-  return nil
+func fick_dich_als_workaround_for_now(bus logisim.Bus, val uint64) {
+  bus.Write(bitarray.NewBitArrayWithVal(bus.Size(), val))
 }
 
 func main() {
-  a := newDipSwitch("out", 4)
-  b := newLedArray("in", 4)
+  clk := logisim.NewTriggerLine()
+  addr := logisim.NewBus(4)
+  data := logisim.NewBus(8)
+  ctrl := logisim.NewBus(2)
+  ram := NewRam(addr, data, ctrl, clk)
 
-  conn := connectionArray{
-    "line1": []string{"dip_switch.out.1", "led_array.in.1"},
-    "line2": []string{"dip_switch.out.2", "led_array.in.2"},
-    "line3": []string{"dip_switch.out.3", "led_array.in.3"},
-    "line4": []string{"dip_switch.out.4", "led_array.in.4"},
-  }
-  engine := newEngine([]comp{a,b}, conn)
+  ram.Print()
 
-  a.setSwt(1, true)
-  engine.run()
+  //addr.Write(42)
+  fick_dich_als_workaround_for_now(addr, 0)
+  //data.Write(74)
+  fick_dich_als_workaround_for_now(data, 74)
+
+  tick(clk)
+
+  // todo
+  // git init && git add -A && git ci -m "inital"
+  // bitarray weg
+  // clock object
+  // Bus Print as Stringer
+  // Ram Print as Stringer
+
+  ram.Print()
+
+  //ctrl.Write(0x01)
+  fick_dich_als_workaround_for_now(ctrl, 0x02)
+  tick(clk)
+
+  ram.Print()
 }

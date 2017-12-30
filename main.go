@@ -7,15 +7,15 @@ import (
 )
 
 type Rom struct {
-  addr logisim.Bus
+  addr logisim.ReadOnlyBus
   data logisim.Bus
-  re logisim.Bus
+  re logisim.ReadOnlyBus
   clk logisim.TriggerLine
 
   contents []uint64
 }
 
-func NewRom(addr logisim.Bus, data logisim.Bus, re logisim.Bus, clk logisim.TriggerLine, contents []uint64) *Rom {
+func NewRom(addr logisim.ReadOnlyBus, data logisim.Bus, re logisim.ReadOnlyBus, clk logisim.TriggerLine, contents []uint64) *Rom {
   if re.Width() != 1 {
     panic("FU")
   }
@@ -42,15 +42,15 @@ func (r *Rom) onTick() {
 }
 
 type Ram struct {
-  addr logisim.Bus
+  addr logisim.ReadOnlyBus
   data logisim.Bus
-  ctrl logisim.Bus
+  ctrl logisim.ReadOnlyBus
   clk logisim.TriggerLine
 
   contents []uint64
 }
 
-func NewRam(addr logisim.Bus, data logisim.Bus, ctrl logisim.Bus, clk logisim.TriggerLine) *Ram {
+func NewRam(addr logisim.ReadOnlyBus, data logisim.Bus, ctrl logisim.ReadOnlyBus, clk logisim.TriggerLine) *Ram {
   if ctrl.Width() != 2 {
     panic("FU")
   }

@@ -1,11 +1,16 @@
 package logisim
 
-type Bus interface {
+type ReadOnlyBus interface {
   OnChange(EventFunc)
   Read() uint64
-  Write(uint64)
   Width() uint8
-  Branch(...uint8) Bus
+  Branch(...uint8) ReadOnlyBus
+}
+
+type Bus interface {
+  ReadOnlyBus
+  Write(uint64)
+  WriteableBranch(...uint8) Bus
 }
 
 type bus struct {
@@ -21,7 +26,11 @@ func NewBus(width uint8) Bus {
   }
 }
 
-func (b *bus) Branch(pinMap ...uint8) Bus {
+func (b *bus) Branch(pinMap ...uint8) ReadOnlyBus {
+  return NewBranch(b, pinMap...)
+}
+
+func (b *bus) WriteableBranch(pinMap ...uint8) Bus {
   return NewBranch(b, pinMap...)
 }
 

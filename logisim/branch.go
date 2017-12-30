@@ -27,7 +27,11 @@ func NewBranch(parent Bus, pinMap ...uint8) Bus {
   return br
 }
 
-func (b *branch) Branch(pinMap ...uint8) Bus {
+func (b *branch) Branch(pinMap ...uint8) ReadOnlyBus {
+  return NewBranch(b, pinMap...)
+}
+
+func (b *branch) WriteableBranch(pinMap ...uint8) Bus {
   return NewBranch(b, pinMap...)
 }
 

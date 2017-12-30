@@ -40,11 +40,6 @@ func (r *Ram) onTick() {
   }
 }
 
-func tick(clk logisim.TriggerLine) {
-  clk.Write(true)
-  clk.Write(false)
-}
-
 func (r *Ram) String() string {
   output := bytes.Buffer{}
   for i := 0; i < len(r.contents); i += 0 {
@@ -60,26 +55,23 @@ func (r *Ram) String() string {
 }
 
 func main() {
-  clk := logisim.NewTriggerLine()
+  clkLine := logisim.NewTriggerLine()
+  clk := logisim.NewClock(clkLine)
   addr := logisim.NewBus(7)
   data := logisim.NewBus(8)
   ctrl := logisim.NewBus(2)
-  ram := NewRam(addr, data, ctrl, clk)
+  ram := NewRam(addr, data, ctrl, clkLine)
 
   fmt.Print(ram)
 
   addr.Write(42)
   data.Write(74)
-
-  tick(clk)
-
-  // todo
-  // clock object
+  clk.Tick()
 
   fmt.Print(ram)
 
   ctrl.Write(0x02)
-  tick(clk)
+  clk.Tick()
 
   fmt.Print(ram)
 }

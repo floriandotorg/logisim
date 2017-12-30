@@ -13,7 +13,7 @@ type triggerLine struct {
   onRisingEdge []EventFunc
 }
 
-func NewTriggerLine() *triggerLine {
+func NewTriggerLine() TriggerLine {
   return &triggerLine{}
 }
 

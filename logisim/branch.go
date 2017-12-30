@@ -2,12 +2,12 @@ package logisim
 
 type branch struct {
   parent Bus
-  pinMap PinMap
+  pinMap []uint8
   mask uint64
 }
 
 
-func NewBranch(parent Bus, pinMap PinMap) Bus {
+func NewBranch(parent Bus, pinMap ...uint8) Bus {
   var mask uint64
 
   for _, p := range pinMap {
@@ -27,8 +27,8 @@ func NewBranch(parent Bus, pinMap PinMap) Bus {
   return br
 }
 
-func (b *branch) Branch(pinMap PinMap) Bus {
-  return NewBranch(b, pinMap)
+func (b *branch) Branch(pinMap ...uint8) Bus {
+  return NewBranch(b, pinMap...)
 }
 
 func (b *branch) OnChange(f EventFunc) {

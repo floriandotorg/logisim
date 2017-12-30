@@ -2,6 +2,7 @@ package main
 
 import (
   "fmt"
+  "bytes"
   "./logisim"
 )
 
@@ -45,17 +46,18 @@ func tick(clk logisim.TriggerLine) {
   clk.Write(false)
 }
 
-func (r *Ram) Print() {
+func (r *Ram) String() string {
+  output := bytes.Buffer{}
   for i := 0; i < len(r.contents); i += 0 {
-    fmt.Printf("%08x:", i)
+    output.WriteString(fmt.Sprintf("%08x:", i))
     for j := 0; j < 16; j++ {
-      fmt.Printf(" %02x", r.contents[i])
+      output.WriteString(fmt.Sprintf(" %02x", r.contents[i]))
       i++
     }
-    fmt.Println()
+    output.WriteString("\n")
   }
-  fmt.Println()
-}
+  output.WriteString("\n")
+  return output.String()
 }
 
 func main() {
@@ -65,7 +67,7 @@ func main() {
   ctrl := logisim.NewBus(2)
   ram := NewRam(addr, data, ctrl, clk)
 
-  ram.Print()
+  fmt.Print(ram)
 
   addr.Write(0)
   data.Write(74)
@@ -74,13 +76,11 @@ func main() {
 
   // todo
   // clock object
-  // Bus Print as Stringer
-  // Ram Print as Stringer
 
-  ram.Print()
+  fmt.Print(ram)
 
   ctrl.Write(0x02)
   tick(clk)
 
-  ram.Print()
+  fmt.Print(ram)
 }

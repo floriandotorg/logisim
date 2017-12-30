@@ -8,6 +8,7 @@ type Bus interface {
   Read() uint64
   Write(uint64)
   Width() uint8
+  Branch(PinMap) Bus
 }
 
 type bus struct {
@@ -21,6 +22,10 @@ func NewBus(width uint8) Bus {
     val: 0,
     width: width,
   }
+}
+
+func (b *bus) Branch(pinMap PinMap) Bus {
+  return NewBranch(b, pinMap)
 }
 
 func (b *bus) OnChange(f EventFunc) {

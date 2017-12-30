@@ -37,7 +37,6 @@ func (r *Ram) onTick() {
     r.data.Write(r.contents[addr])
   } else if status == 0x02 {
     r.contents[addr] = r.data.Read()
-  fmt.Println(r.contents)
   }
 }
 

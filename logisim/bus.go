@@ -26,6 +26,13 @@ func NewBus(width uint8) Bus {
   }
 }
 
+func NewBusLiteral(width uint8, val uint64) ReadOnlyBus {
+  return &bus{
+    val: val,
+    width: width,
+  }
+}
+
 func (b *bus) Branch(pinMap ...uint8) ReadOnlyBus {
   return NewBranch(b, pinMap...)
 }

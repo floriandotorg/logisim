@@ -62,14 +62,14 @@ func (r *Ram) String() string {
 
 func main() {
   clk := logisim.NewTriggerLine()
-  addr := logisim.NewBus(4)
+  addr := logisim.NewBus(7)
   data := logisim.NewBus(8)
   ctrl := logisim.NewBus(2)
   ram := NewRam(addr, data, ctrl, clk)
 
   fmt.Print(ram)
 
-  addr.Write(0)
+  addr.Write(42)
   data.Write(74)
 
   tick(clk)

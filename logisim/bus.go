@@ -1,8 +1,5 @@
 package logisim
 
-import (
-)
-
 type Bus interface {
   OnChange(EventFunc)
   Read() uint64

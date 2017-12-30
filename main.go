@@ -6,6 +6,41 @@ import (
   "./logisim"
 )
 
+type Rom struct {
+  addr logisim.Bus
+  data logisim.Bus
+  re logisim.Bus
+  clk logisim.TriggerLine
+
+  contents []uint64
+}
+
+func NewRom(addr logisim.Bus, data logisim.Bus, re logisim.Bus, clk logisim.TriggerLine, contents []uint64) *Rom {
+  if re.Width() != 1 {
+    panic("FU")
+  }
+  if len(contents) != 1 << uint64(addr.Width()) {
+    panic("ROM and contents size differ")
+  }
+  rom := &Rom{
+    addr: addr,
+    data: data,
+    re: re,
+    clk: clk,
+    contents: contents,
+  }
+  clk.OnRisingEdge(rom.onTick)
+  return rom
+}
+
+func (r *Rom) onTick() {
+  status := r.re.Read()
+  addr := r.addr.Read()
+  if status == 0x01 {
+    r.data.Write(r.contents[addr])
+  }
+}
+
 type Ram struct {
   addr logisim.Bus
   data logisim.Bus

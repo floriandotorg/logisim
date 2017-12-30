@@ -23,19 +23,19 @@ func NewBus(width uint8) Bus {
   }
 }
 
-func (p *bus) OnChange(f EventFunc) {
-  p.onChange = append(p.onChange, f)
+func (b *bus) OnChange(f EventFunc) {
+  b.onChange = append(b.onChange, f)
 }
 
-func (p *bus) Read() uint64 {
-  return p.val
+func (b *bus) Read() uint64 {
+  return b.val
 }
 
-func (p *bus) Write(val uint64) {
-  if p.val != val {
-    p.val = val
+func (b *bus) Write(val uint64) {
+  if b.val != val {
+    b.val = val
 
-    for _, f := range p.onChange {
+    for _, f := range b.onChange {
       f()
     }
   }

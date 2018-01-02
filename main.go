@@ -152,11 +152,21 @@ func (r *Register) onRead() {
 	}
 }
 
+// MEM = Memory (RAM)
+// MAR = Memory Address Register
+// MIC = Micro Instruction Counter
+// IRE = Instruction Register
+
 // OE = Output Enable
 // WE = Write Enable
+// RE = Reset
 
 const MEM_OE = 0
 const MEM_WE = 1
+
+const MAR_WE = 2
+const MIC_RE = 3
+const IRE_WE = 4
 
 func main() {
 	falseBusBit := logisim.NewBusLiteral(1, 0)
@@ -172,14 +182,27 @@ func main() {
 	microInstContents[4] = 1 << MIC_RE
 	//microInstContents := []uint64{1 << MAR_WE, 1 << MIC_RE}
 	controlWord := logisim.NewBus(20)
-	addr := logisim.NewBus(7)
+	NewRom(microInstNum, controlWord, trueBusBit, clkLine, microInstContents)
+
 	data := logisim.NewBus(8)
 
-	ram := NewRam(addr, data, controlWord.Branch(MEM_WE), controlWord.Branch(MEM_OE), clkLine)
+	microInstNumSub := microInstNum.WriteableBranch(2, 1, 0)
 
+	NewRegister(nil, microInstNumSub, falseBusBit, trueBusBit, trueBusBit, controlWord.Branch(MIC_RE), clkLine)
+
+	memAddrBus := logisim.NewBus(8)
+	NewRegister(data, memAddrBus, controlWord.Branch(MAR_WE), trueBusBit, falseBusBit, falseBusBit, clkLine)
+
+	NewRegister(data, data, controlWord.Branch(IRE_WE), falseBusBit, falseBusBit, falseBusBit, clk)
+
+	NewRam(memAddrBus, data, controlWord.Branch(MEM_WE), controlWord.Branch(MEM_OE), clkLine)
 	fmt.Print(ram)
 
-	addr.Write(42)
+	data.Write(42)
+	controlWord.Write(1 << MAR_WE)
+	clk.Tick()
+	controlWord.Write(0)
+
 	data.Write(74)
 	clk.Tick()
 
@@ -189,4 +212,6 @@ func main() {
 	clk.Tick()
 
 	fmt.Print(ram)
+
+	clk.Ticks(10)
 }

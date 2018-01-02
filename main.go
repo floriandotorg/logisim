@@ -97,6 +97,61 @@ func (r *Ram) String() string {
 	return output.String()
 }
 
+type Register struct {
+	in              logisim.ReadOnlyBus
+	out             logisim.Bus
+	writeEnable     logisim.ReadOnlyBus
+	outputEnable    logisim.ReadOnlyBus
+	incrementEnable logisim.ReadOnlyBus
+	reset           logisim.ReadOnlyBus
+	clk             logisim.Clock
+
+	max uint64
+	val uint64
+}
+
+func NewRegister(in logisim.ReadOnlyBus, out logisim.Bus, writeEnable logisim.ReadOnlyBus, outputEnable, incrementEnable logisim.ReadOnlyBus, reset logisim.ReadOnlyBus, clk logisim.Clock) *Register {
+	register := &Register{
+		in:              in,
+		out:             out,
+		writeEnable:     writeEnable,
+		outputEnable:    outputEnable,
+		incrementEnable: incrementEnable,
+		reset:           reset,
+		clk:             clk,
+
+		max: 1 << out.Width(),
+	}
+	clk.OnWrite(register.onWrite)
+	clk.OnRead(register.onRead)
+	return register
+}
+
+func (r *Register) onWrite() {
+	if r.max == 8 {
+		fmt.Printf("%v / %v\n", r.val, r.max)
+	}
+	if r.reset.Read() == 1 {
+		r.val = 0
+	}
+	if r.outputEnable.Read() == 1 {
+		r.out.Write(r.val)
+	}
+	if r.incrementEnable.Read() == 1 {
+		if r.val >= r.max {
+			r.val = 0
+		} else {
+			r.val++
+		}
+	}
+}
+
+func (r *Register) onRead() {
+	if r.writeEnable.Read() == 1 {
+		r.val = r.in.Read()
+	}
+}
+
 // OE = Output Enable
 // WE = Write Enable
 

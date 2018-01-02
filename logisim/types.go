@@ -1,3 +1,3 @@
 package logisim
 
-type EventFunc func ()
+type EventFunc func()

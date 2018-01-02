@@ -1,65 +1,64 @@
 package logisim
 
 type branch struct {
-  parent Bus
-  pinMap []uint8
-  mask uint64
+	parent Bus
+	pinMap []uint8
+	mask   uint64
 }
 
-
 func NewBranch(parent Bus, pinMap ...uint8) Bus {
-  var mask uint64
+	var mask uint64
 
-  for _, p := range pinMap {
-    if p >= parent.Width() {
-      panic("you idiot")
-    }
+	for _, p := range pinMap {
+		if p >= parent.Width() {
+			panic("you idiot")
+		}
 
-    mask |= 1 << p
-  }
+		mask |= 1 << p
+	}
 
-  br := &branch{
-    parent: parent,
-    pinMap: pinMap,
-    mask: mask,
-  }
+	br := &branch{
+		parent: parent,
+		pinMap: pinMap,
+		mask:   mask,
+	}
 
-  return br
+	return br
 }
 
 func (b *branch) Branch(pinMap ...uint8) ReadOnlyBus {
-  return NewBranch(b, pinMap...)
+	return NewBranch(b, pinMap...)
 }
 
 func (b *branch) WriteableBranch(pinMap ...uint8) Bus {
-  return NewBranch(b, pinMap...)
+	return NewBranch(b, pinMap...)
 }
 
 func (b *branch) OnChange(f EventFunc) {
-  b.parent.OnChange(f)
+	b.parent.OnChange(f)
 }
 
 func (b *branch) Read() uint64 {
-  var result uint64
-  val := b.parent.Read()
+	var result uint64
+	val := b.parent.Read()
 
-  for n, p := range b.pinMap {
-    result |= ((val >> p) & 0x01) << uint8(n)
-  }
+	for n, p := range b.pinMap {
+		result |= ((val >> p) & 0x01) << uint8(n)
+	}
 
-  return result
+	return result
 }
 
 func (b *branch) Write(newVal uint64) {
-  var val uint64
+	var val uint64
 
-  for n, p := range b.pinMap {
-    val |= ((newVal >> uint8(len(b.pinMap) - n - 1)) & 0x01) << p
-  }
+	for n, p := range b.pinMap {
+		val |= ((newVal >> uint8(len(b.pinMap)-n-1)) & 0x01) << p
+	}
 
-  b.parent.Write((b.parent.Read() & ^b.mask) | val)
+	b.parent.Write((b.parent.Read() & ^b.mask) | val)
 }
 
 func (b *branch) Width() uint8 {
-  return uint8(len(b.pinMap))
+	return uint8(len(b.pinMap))
 }

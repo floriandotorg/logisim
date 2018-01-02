@@ -201,6 +201,13 @@ func main() {
   NewRegister(data, data, controlWord.Branch(IRE_WE), falseBusBit, falseBusBit, falseBusBit, clk)
 
   NewRam(memAddrBus, data, controlWord.Branch(MEM_WE), controlWord.Branch(MEM_OE), clkLine)
+
+  for n := 0; n < 10; n++ {
+    fmt.Printf("mI# %v (%v) CW %020b\n", microInstNum.Read(), microInstNumSub.Read(), controlWord.Read())
+    clk.Tick()
+  }
+
+/*
   fmt.Print(ram)
 
   data.Write(42)
@@ -220,4 +227,5 @@ func main() {
   fmt.Print(ram)
 
   clk.Ticks(10)
+  */
 }

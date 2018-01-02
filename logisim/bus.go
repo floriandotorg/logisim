@@ -1,10 +1,11 @@
 package logisim
 
 type ReadOnlyBus interface {
-	OnChange(EventFunc)
+	OnChange(ChangeFunc)
 	Read() uint64
 	Width() uint8
 	Branch(...uint8) ReadOnlyBus
+	TriggerBranch(pin uint8) TriggerLine
 }
 
 type Bus interface {
@@ -16,7 +17,7 @@ type Bus interface {
 type bus struct {
 	val      uint64
 	width    uint8
-	onChange []EventFunc
+	onChange []ChangeFunc
 }
 
 func NewBus(width uint8) Bus {
@@ -41,7 +42,11 @@ func (b *bus) WriteableBranch(pinMap ...uint8) Bus {
 	return NewBranch(b, pinMap...)
 }
 
-func (b *bus) OnChange(f EventFunc) {
+func (b *bus) TriggerBranch(pin uint8) TriggerLine {
+	return NewBusTriggerLine(b, pin)
+}
+
+func (b *bus) OnChange(f ChangeFunc) {
 	b.onChange = append(b.onChange, f)
 }
 
@@ -51,10 +56,11 @@ func (b *bus) Read() uint64 {
 
 func (b *bus) Write(val uint64) {
 	if b.val != val {
+		old := b.val
 		b.val = val
 
 		for _, f := range b.onChange {
-			f()
+			f(old)
 		}
 	}
 }

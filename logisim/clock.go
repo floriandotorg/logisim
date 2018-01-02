@@ -1,41 +1,36 @@
 package logisim
 
 type Clock interface {
-	OnWrite(EventFunc)
-	OnRead(EventFunc)
 	Tick()
-	Ticks(uint64)
+	TickNTimes(uint64)
+	GetClockLine() TriggerLine
 }
 
 type clock struct {
-	onWrite []EventFunc
-	onRead  []EventFunc
+	clockBus  Bus
+	clockLine TriggerLine
 }
 
 func NewClock() Clock {
-	return &clock{}
-}
+	clockBus := NewBus(1)
 
-func (c *clock) OnWrite(f EventFunc) {
-	c.onWrite = append(c.onWrite, f)
-}
-
-func (c *clock) OnRead(f EventFunc) {
-	c.onRead = append(c.onRead, f)
+	return &clock{
+		clockBus:  clockBus,
+		clockLine: clockBus.TriggerBranch(0),
+	}
 }
 
 func (c *clock) Tick() {
-	c.Ticks(1)
+	c.clockBus.Write(0x01)
+	c.clockBus.Write(0x00)
 }
 
-func (c *clock) Ticks(number uint64) {
-	for ; number > 0; number-- {
-		for _, f := range c.onWrite {
-			f()
-		}
-
-		for _, f := range c.onRead {
-			f()
-		}
+func (c *clock) TickNTimes(n uint64) {
+	for ; n > 0; n-- {
+		c.Tick()
 	}
+}
+
+func (c *clock) GetClockLine() TriggerLine {
+	return c.clockLine
 }

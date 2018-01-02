@@ -28,11 +28,15 @@ func (b *branch) Branch(pinMap ...uint8) ReadOnlyBus {
 	return NewBranch(b, pinMap...)
 }
 
+func (b *branch) TriggerBranch(pin uint8) TriggerLine {
+	return NewBusTriggerLine(b, pin)
+}
+
 func (b *branch) WriteableBranch(pinMap ...uint8) Bus {
 	return NewBranch(b, pinMap...)
 }
 
-func (b *branch) OnChange(f EventFunc) {
+func (b *branch) OnChange(f ChangeFunc) {
 	b.parent.OnChange(f)
 }
 

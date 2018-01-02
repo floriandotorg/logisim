@@ -1,46 +1,53 @@
 package logisim
 
 type TriggerLine interface {
-	OnChange(EventFunc)
 	OnRisingEdge(EventFunc)
+	OnFallingEdge(EventFunc)
 	Read() bool
-	Write(bool)
 }
 
 type triggerLine struct {
-	val          bool
-	onChange     []EventFunc
-	onRisingEdge []EventFunc
+	parent        ReadOnlyBus
+	mask          uint64
+	onRisingEdge  []EventFunc
+	onFallingEdge []EventFunc
 }
 
 func NewTriggerLine() TriggerLine {
-	return &triggerLine{}
+	return NewBusTriggerLine(NewBus(1), 0)
+}
+
+func NewBusTriggerLine(bus ReadOnlyBus, pin uint8) TriggerLine {
+	triggerLine := &triggerLine{
+		parent: bus,
+		mask:   1 << pin,
+	}
+	triggerLine.parent.OnChange(triggerLine.onChange)
+	return triggerLine
 }
 
 func (t *triggerLine) OnRisingEdge(f EventFunc) {
 	t.onRisingEdge = append(t.onRisingEdge, f)
 }
 
-func (t *triggerLine) OnChange(f EventFunc) {
-	t.onChange = append(t.onChange, f)
+func (t *triggerLine) OnFallingEdge(f EventFunc) {
+	t.onFallingEdge = append(t.onFallingEdge, f)
 }
 
-func (t *triggerLine) Read() bool {
-	return t.val
-}
-
-func (t *triggerLine) Write(val bool) {
-	if t.val != val {
-		t.val = val
-
-		for _, f := range t.onChange {
-			f()
-		}
-
-		if t.val {
+func (t *triggerLine) onChange(old uint64) {
+	if t.parent.Read()&t.mask != old&t.mask {
+		if t.Read() {
 			for _, f := range t.onRisingEdge {
+				f()
+			}
+		} else {
+			for _, f := range t.onFallingEdge {
 				f()
 			}
 		}
 	}
+}
+
+func (t *triggerLine) Read() bool {
+	return t.parent.Read()&t.mask != 0x00
 }

@@ -6,81 +6,53 @@ import (
 	"fmt"
 )
 
-type Rom struct {
-	addr         logisim.ReadOnlyBus
-	addrLatch    uint64
-	data         logisim.Bus
-	outputEnable logisim.ReadOnlyBus
-	clk          logisim.Clock
-
-	contents []uint64
-}
-
-func NewRom(addr logisim.ReadOnlyBus, data logisim.Bus, outputEnable logisim.ReadOnlyBus, clk logisim.Clock, contents []uint64) *Rom {
-	if outputEnable.Width() != 1 {
-		panic("FU")
-	}
-	if len(contents) != 1<<uint64(addr.Width()) {
-		panic("ROM and contents size differ")
-	}
-	rom := &Rom{
-		addr:         addr,
-		data:         data,
-		outputEnable: outputEnable,
-		clk:          clk,
-		contents:     contents,
-	}
-	clk.OnWrite(rom.onWrite)
-	return rom
-}
-
-func (r *Rom) onWrite() {
-	status := r.outputEnable.Read()
-	if status == 0x01 {
-		r.data.Write(r.contents[r.addrLatch])
-	}
-}
-
-func (r *Rom) onRead() {
-	r.addrLatch = r.addr.Read()
-}
-
 type Ram struct {
 	addr         logisim.ReadOnlyBus
-	addrLatch    uint64
 	data         logisim.Bus
-	writeEnable  logisim.ReadOnlyBus
-	outputEnable logisim.ReadOnlyBus
-	clk          logisim.Clock
+	writeEnable  logisim.TriggerLine
+	outputEnable logisim.TriggerLine
+	clockLine    logisim.TriggerLine
 
 	contents []uint64
 }
 
-func NewRam(addr logisim.ReadOnlyBus, data logisim.Bus, writeEnable, outputEnable logisim.ReadOnlyBus, clk logisim.Clock) *Ram {
+func NewRam(addr logisim.ReadOnlyBus, data logisim.Bus, writeEnable, outputEnable, clockLine logisim.TriggerLine) *Ram {
 	ram := &Ram{
 		addr:         addr,
 		data:         data,
 		writeEnable:  writeEnable,
 		outputEnable: outputEnable,
-		clk:          clk,
+		clockLine:    clockLine,
 		contents:     make([]uint64, 1<<uint64(addr.Width())),
 	}
-	clk.OnWrite(ram.onWrite)
-	clk.OnRead(ram.onRead)
+	addr.OnChange(ram.onAddrChange)
+	outputEnable.OnRisingEdge(ram.onOutput)
+	writeEnable.OnFallingEdge(ram.onInput)
 	return ram
 }
 
-func (r *Ram) onWrite() {
-	if r.outputEnable.Read() == 1 {
-		r.data.Write(r.contents[r.addrLatch])
+func (r *Ram) write(offset int, data []uint64) {
+	if offset+len(data) > len(r.contents) {
+		panic("This has gone too far!")
+	}
+
+	for n := 0; n < len(data); n++ {
+		r.contents[n+offset] = data[n]
 	}
 }
 
-func (r *Ram) onRead() {
-	r.addrLatch = r.addr.Read()
-	if r.writeEnable.Read() == 1 {
-		r.contents[r.addrLatch] = r.data.Read()
+func (r *Ram) onAddrChange(old uint64) {
+	if r.outputEnable.Read() {
+		r.onOutput()
 	}
+}
+
+func (r *Ram) onInput() {
+	r.contents[r.addr.Read()] = r.data.Read()
+}
+
+func (r *Ram) onOutput() {
+	r.data.Write(r.contents[r.addr.Read()])
 }
 
 func (r *Ram) String() string {
@@ -100,17 +72,17 @@ func (r *Ram) String() string {
 type Register struct {
 	in              logisim.ReadOnlyBus
 	out             logisim.Bus
-	writeEnable     logisim.ReadOnlyBus
-	outputEnable    logisim.ReadOnlyBus
-	incrementEnable logisim.ReadOnlyBus
-	reset           logisim.ReadOnlyBus
-	clk             logisim.Clock
+	writeEnable     logisim.TriggerLine
+	outputEnable    logisim.TriggerLine
+	incrementEnable logisim.TriggerLine
+	reset           logisim.TriggerLine
+	clockLine       logisim.TriggerLine
 
 	max uint64
 	val uint64
 }
 
-func NewRegister(in logisim.ReadOnlyBus, out logisim.Bus, writeEnable logisim.ReadOnlyBus, outputEnable, incrementEnable logisim.ReadOnlyBus, reset logisim.ReadOnlyBus, clk logisim.Clock) *Register {
+func NewRegister(in logisim.ReadOnlyBus, out logisim.Bus, writeEnable, outputEnable, incrementEnable, reset, clockLine logisim.TriggerLine) *Register {
 	register := &Register{
 		in:              in,
 		out:             out,
@@ -118,38 +90,42 @@ func NewRegister(in logisim.ReadOnlyBus, out logisim.Bus, writeEnable logisim.Re
 		outputEnable:    outputEnable,
 		incrementEnable: incrementEnable,
 		reset:           reset,
-		clk:             clk,
+		clockLine:       clockLine,
 
 		max: 1 << out.Width(),
 	}
-	clk.OnWrite(register.onWrite)
-	clk.OnRead(register.onRead)
+	clockLine.OnRisingEdge(register.onInput)
+	reset.OnRisingEdge(register.onReset)
+	outputEnable.OnRisingEdge(register.onOutput)
 	return register
 }
 
-func (r *Register) onWrite() {
-	if r.max == 8 {
-		fmt.Printf("%v / %v\n", r.val, r.max)
-	}
-	if r.reset.Read() == 1 {
-		r.val = 0
-	}
-	if r.outputEnable.Read() == 1 {
+func (r *Register) onReset() {
+	r.val = 0
+
+	if r.outputEnable.Read() {
 		r.out.Write(r.val)
 	}
-	if r.incrementEnable.Read() == 1 {
-		if r.val >= r.max {
-			r.val = 0
-		} else {
-			r.val++
+}
+
+func (r *Register) onInput() {
+	if !r.reset.Read() {
+		if r.writeEnable.Read() {
+			r.val = r.in.Read()
+		}
+
+		if r.outputEnable.Read() {
+			r.out.Write(r.val)
+		}
+
+		if r.incrementEnable.Read() {
+			r.val = (r.val + 1) % r.max
 		}
 	}
 }
 
-func (r *Register) onRead() {
-	if r.writeEnable.Read() == 1 {
-		r.val = r.in.Read()
-	}
+func (r *Register) onOutput() {
+	r.out.Write(r.val)
 }
 
 // MEM = Memory (RAM)
@@ -172,60 +148,47 @@ func main() {
 	falseBusBit := logisim.NewBusLiteral(1, 0)
 	trueBusBit := logisim.NewBusLiteral(1, 1)
 
-	clkLine := logisim.NewClock()
-	clk := clkLine // Workaround
+	falseTrigger := falseBusBit.TriggerBranch(0)
+	trueTrigger := trueBusBit.TriggerBranch(0)
+
+	clock := logisim.NewClock()
+	clockLine := clock.GetClockLine()
 
 	microInstNum := logisim.NewBus(7)
 	microInstContents := make([]uint64, 1<<uint64(microInstNum.Width()))
 	microInstContents[0] = 1 << MAR_WE
 	microInstContents[1] = 1<<MEM_OE | 1<<IRE_WE
 	microInstContents[4] = 1 << MIC_RE
-	//microInstContents := []uint64{1 << MAR_WE, 1 << MIC_RE}
 	controlWord := logisim.NewBus(20)
-	NewRom(microInstNum, controlWord, trueBusBit, clkLine, microInstContents)
+	controlRom := NewRam(microInstNum, controlWord, falseTrigger, trueTrigger, clockLine)
+	controlRom.write(0, microInstContents)
 
 	data := logisim.NewBus(8)
 
-	/*  microInstNum.Write(1) // Set to dummy value to print whenit changes to 0
-	microInstNum.OnChange(func () {
-	  fmt.Println(microInstNum.Read())
-	})*/
+	fmt.Print(controlRom)
 
-	microInstNumSub := microInstNum.WriteableBranch(2, 1, 0)
+	microInstNumSub := microInstNum.WriteableBranch(0, 1, 2)
 
-	NewRegister(nil, microInstNumSub, falseBusBit, trueBusBit, trueBusBit, controlWord.Branch(MIC_RE), clkLine)
+	// Micro Ins
+	NewRegister(nil, microInstNumSub, falseTrigger, trueTrigger, trueTrigger, controlWord.TriggerBranch(MIC_RE), clockLine)
 
 	memAddrBus := logisim.NewBus(8)
-	NewRegister(data, memAddrBus, controlWord.Branch(MAR_WE), trueBusBit, falseBusBit, falseBusBit, clkLine)
+	// Mem Addr
+	NewRegister(data, memAddrBus, controlWord.TriggerBranch(MAR_WE), trueTrigger, falseTrigger, falseTrigger, clockLine)
 
-	NewRegister(data, data, controlWord.Branch(IRE_WE), falseBusBit, falseBusBit, falseBusBit, clk)
+	// Ins
+	NewRegister(data, data, controlWord.TriggerBranch(IRE_WE), falseTrigger, falseTrigger, falseTrigger, clockLine)
 
-	NewRam(memAddrBus, data, controlWord.Branch(MEM_WE), controlWord.Branch(MEM_OE), clkLine)
+	NewRam(memAddrBus, data, controlWord.TriggerBranch(MEM_WE), controlWord.TriggerBranch(MEM_OE), clockLine)
+
+	// TODO
+	// - const VCC/GND
+	// - parameter structs
+	// - REMOVE NEXT LINE
+	controlRom.onOutput()
 
 	for n := 0; n < 10; n++ {
-		fmt.Printf("mI# %v (%v) CW %020b\n", microInstNum.Read(), microInstNumSub.Read(), controlWord.Read())
-		clk.Tick()
+		clock.Tick()
+		fmt.Printf("mI# %04b[%03b] CW %020b\n", microInstNum.Read()>>3, microInstNumSub.Read(), controlWord.Read())
 	}
-
-	/*
-	   fmt.Print(ram)
-
-	   data.Write(42)
-	   controlWord.Write(1 << MAR_WE)
-	   clk.Tick()
-	   controlWord.Write(0)
-
-	   data.Write(74)
-	   clk.Tick()
-
-	   fmt.Print(ram)
-
-	   controlWord.Write(1 << MEM_WE)
-	   fmt.Printf("CW %020b MEM_WE %v ram's %v\n", controlWord.Read(), we.Read(), ram.addrLatch)
-	   clk.Tick()
-
-	   fmt.Print(ram)
-
-	   clk.Ticks(10)
-	*/
 }

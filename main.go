@@ -11,23 +11,28 @@ type Ram struct {
 	data         logisim.Bus
 	writeEnable  logisim.TriggerLine
 	outputEnable logisim.TriggerLine
-	clockLine    logisim.TriggerLine
 
 	contents []uint64
 }
 
-func NewRam(addr logisim.ReadOnlyBus, data logisim.Bus, writeEnable, outputEnable, clockLine logisim.TriggerLine) *Ram {
+type RamParams struct {
+	addr         logisim.ReadOnlyBus
+	data         logisim.Bus
+	writeEnable  logisim.TriggerLine
+	outputEnable logisim.TriggerLine
+}
+
+func NewRam(p RamParams) *Ram {
 	ram := &Ram{
-		addr:         addr,
-		data:         data,
-		writeEnable:  writeEnable,
-		outputEnable: outputEnable,
-		clockLine:    clockLine,
-		contents:     make([]uint64, 1<<uint64(addr.Width())),
+		addr:         p.addr,
+		data:         p.data,
+		writeEnable:  p.writeEnable,
+		outputEnable: p.outputEnable,
+		contents:     make([]uint64, 1<<uint64(p.addr.Width())),
 	}
-	addr.OnChange(ram.onAddrChange)
-	outputEnable.OnRisingEdge(ram.onOutput)
-	writeEnable.OnFallingEdge(ram.onInput)
+	p.addr.OnChange(ram.onAddrChange)
+	p.outputEnable.OnRisingEdge(ram.onOutput)
+	p.writeEnable.OnFallingEdge(ram.onInput)
 	return ram
 }
 
@@ -42,7 +47,7 @@ func (r *Ram) write(offset int, data []uint64) {
 }
 
 func (r *Ram) onAddrChange(old uint64) {
-	if r.outputEnable.Read() {
+	if r.outputEnable.IsHigh() {
 		r.onOutput()
 	}
 }
@@ -82,43 +87,52 @@ type Register struct {
 	val uint64
 }
 
-func NewRegister(in logisim.ReadOnlyBus, out logisim.Bus, writeEnable, outputEnable, incrementEnable, reset, clockLine logisim.TriggerLine) *Register {
-	register := &Register{
-		in:              in,
-		out:             out,
-		writeEnable:     writeEnable,
-		outputEnable:    outputEnable,
-		incrementEnable: incrementEnable,
-		reset:           reset,
-		clockLine:       clockLine,
+type RegisterParams struct {
+	in              logisim.ReadOnlyBus
+	out             logisim.Bus
+	writeEnable     logisim.TriggerLine
+	outputEnable    logisim.TriggerLine
+	incrementEnable logisim.TriggerLine
+	reset           logisim.TriggerLine
+	clockLine       logisim.TriggerLine
+}
 
-		max: 1 << out.Width(),
+func NewRegister(p RegisterParams) *Register {
+	register := &Register{
+		in:              p.in,
+		out:             p.out,
+		writeEnable:     p.writeEnable,
+		outputEnable:    p.outputEnable,
+		incrementEnable: p.incrementEnable,
+		reset:           p.reset,
+		clockLine:       p.clockLine,
+		max:             1 << p.out.Width(),
 	}
-	clockLine.OnRisingEdge(register.onInput)
-	reset.OnRisingEdge(register.onReset)
-	outputEnable.OnRisingEdge(register.onOutput)
+	p.clockLine.OnRisingEdge(register.onInput)
+	p.reset.OnRisingEdge(register.onReset)
+	p.outputEnable.OnRisingEdge(register.onOutput)
 	return register
 }
 
 func (r *Register) onReset() {
 	r.val = 0
 
-	if r.outputEnable.Read() {
+	if r.outputEnable.IsHigh() {
 		r.out.Write(r.val)
 	}
 }
 
 func (r *Register) onInput() {
-	if !r.reset.Read() {
-		if r.writeEnable.Read() {
+	if !r.reset.IsHigh() {
+		if r.writeEnable.IsHigh() {
 			r.val = r.in.Read()
 		}
 
-		if r.outputEnable.Read() {
+		if r.outputEnable.IsHigh() {
 			r.out.Write(r.val)
 		}
 
-		if r.incrementEnable.Read() {
+		if r.incrementEnable.IsHigh() {
 			r.val = (r.val + 1) % r.max
 		}
 	}
@@ -145,12 +159,6 @@ const MIC_RE = 3
 const IRE_WE = 4
 
 func main() {
-	falseBusBit := logisim.NewBusLiteral(1, 0)
-	trueBusBit := logisim.NewBusLiteral(1, 1)
-
-	falseTrigger := falseBusBit.TriggerBranch(0)
-	trueTrigger := trueBusBit.TriggerBranch(0)
-
 	clock := logisim.NewClock()
 	clockLine := clock.GetClockLine()
 
@@ -160,7 +168,12 @@ func main() {
 	microInstContents[1] = 1<<MEM_OE | 1<<IRE_WE
 	microInstContents[4] = 1 << MIC_RE
 	controlWord := logisim.NewBus(20)
-	controlRom := NewRam(microInstNum, controlWord, falseTrigger, trueTrigger, clockLine)
+	controlRom := NewRam(RamParams{
+		addr:         microInstNum,
+		data:         controlWord,
+		writeEnable:  logisim.LOW(),
+		outputEnable: logisim.HIGH(),
+	})
 	controlRom.write(0, microInstContents)
 
 	data := logisim.NewBus(8)
@@ -170,21 +183,48 @@ func main() {
 	microInstNumSub := microInstNum.WriteableBranch(0, 1, 2)
 
 	// Micro Ins
-	NewRegister(nil, microInstNumSub, falseTrigger, trueTrigger, trueTrigger, controlWord.TriggerBranch(MIC_RE), clockLine)
+	NewRegister(RegisterParams{
+		in:              nil,
+		out:             microInstNumSub,
+		writeEnable:     logisim.LOW(),
+		outputEnable:    logisim.HIGH(),
+		incrementEnable: logisim.HIGH(),
+		reset:           controlWord.TriggerBranch(MIC_RE),
+		clockLine:       clockLine,
+	})
 
 	memAddrBus := logisim.NewBus(8)
+
 	// Mem Addr
-	NewRegister(data, memAddrBus, controlWord.TriggerBranch(MAR_WE), trueTrigger, falseTrigger, falseTrigger, clockLine)
+	NewRegister(RegisterParams{
+		in:              data,
+		out:             memAddrBus,
+		writeEnable:     controlWord.TriggerBranch(MAR_WE),
+		outputEnable:    logisim.HIGH(),
+		incrementEnable: logisim.LOW(),
+		reset:           logisim.LOW(),
+		clockLine:       clockLine,
+	})
 
 	// Ins
-	NewRegister(data, data, controlWord.TriggerBranch(IRE_WE), falseTrigger, falseTrigger, falseTrigger, clockLine)
+	NewRegister(RegisterParams{
+		in:              data,
+		out:             data,
+		writeEnable:     controlWord.TriggerBranch(IRE_WE),
+		outputEnable:    logisim.LOW(),
+		incrementEnable: logisim.LOW(),
+		reset:           logisim.LOW(),
+		clockLine:       clockLine,
+	})
 
-	NewRam(memAddrBus, data, controlWord.TriggerBranch(MEM_WE), controlWord.TriggerBranch(MEM_OE), clockLine)
+	NewRam(RamParams{
+		addr:         memAddrBus,
+		data:         data,
+		writeEnable:  controlWord.TriggerBranch(MEM_WE),
+		outputEnable: controlWord.TriggerBranch(MEM_OE),
+	})
 
-	// TODO
-	// - const VCC/GND
-	// - parameter structs
-	// - REMOVE NEXT LINE
+	// dirty hack, todo: remove
 	controlRom.onOutput()
 
 	for n := 0; n < 10; n++ {

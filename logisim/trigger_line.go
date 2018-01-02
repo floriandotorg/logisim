@@ -3,7 +3,7 @@ package logisim
 type TriggerLine interface {
 	OnRisingEdge(EventFunc)
 	OnFallingEdge(EventFunc)
-	Read() bool
+	IsHigh() bool
 }
 
 type triggerLine struct {
@@ -36,7 +36,7 @@ func (t *triggerLine) OnFallingEdge(f EventFunc) {
 
 func (t *triggerLine) onChange(old uint64) {
 	if t.parent.Read()&t.mask != old&t.mask {
-		if t.Read() {
+		if t.IsHigh() {
 			for _, f := range t.onRisingEdge {
 				f()
 			}
@@ -48,6 +48,6 @@ func (t *triggerLine) onChange(old uint64) {
 	}
 }
 
-func (t *triggerLine) Read() bool {
+func (t *triggerLine) IsHigh() bool {
 	return t.parent.Read()&t.mask != 0x00
 }

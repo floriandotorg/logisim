@@ -5,7 +5,7 @@ type ReadOnlyBus interface {
 	Read() uint64
 	Width() uint8
 	Branch(...uint8) ReadOnlyBus
-	TriggerBranch(pin uint8) TriggerLine
+	TriggerBranch(uint8) TriggerLine
 }
 
 type Bus interface {

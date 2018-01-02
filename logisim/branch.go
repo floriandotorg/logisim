@@ -17,13 +17,11 @@ func NewBranch(parent Bus, pinMap ...uint8) Bus {
 		mask |= 1 << p
 	}
 
-	br := &branch{
+	return &branch{
 		parent: parent,
 		pinMap: pinMap,
 		mask:   mask,
 	}
-
-	return br
 }
 
 func (b *branch) Branch(pinMap ...uint8) ReadOnlyBus {
@@ -53,7 +51,7 @@ func (b *branch) Write(newVal uint64) {
 	var val uint64
 
 	for n, p := range b.pinMap {
-		val |= ((newVal >> uint8(len(b.pinMap)-n-1)) & 0x01) << p
+		val |= ((newVal >> uint8(n)) & 0x01) << p
 	}
 
 	b.parent.Write((b.parent.Read() & ^b.mask) | val)

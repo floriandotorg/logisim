@@ -1,18 +1,27 @@
 package logisim
 
 type Clock interface {
+	OnWrite(EventFunc)
+	OnRead(EventFunc)
 	Tick()
-	Ticks(number uint64)
+	Ticks(uint64)
 }
 
 type clock struct {
-	line TriggerLine
+	onWrite []EventFunc
+	onRead  []EventFunc
 }
 
-func NewClock(line TriggerLine) Clock {
-	return &clock{
-		line: line,
-	}
+func NewClock() Clock {
+	return &clock{}
+}
+
+func (c *clock) OnWrite(f EventFunc) {
+	c.onWrite = append(c.onWrite, f)
+}
+
+func (c *clock) OnRead(f EventFunc) {
+	c.onRead = append(c.onRead, f)
 }
 
 func (c *clock) Tick() {
@@ -21,7 +30,12 @@ func (c *clock) Tick() {
 
 func (c *clock) Ticks(number uint64) {
 	for ; number > 0; number-- {
-		c.line.Write(true)
-		c.line.Write(false)
+		for _, f := range c.onWrite {
+			f()
+		}
+
+		for _, f := range c.onRead {
+			f()
+		}
 	}
 }

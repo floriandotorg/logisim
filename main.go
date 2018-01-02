@@ -8,14 +8,15 @@ import (
 
 type Rom struct {
 	addr         logisim.ReadOnlyBus
+	addrLatch    uint64
 	data         logisim.Bus
 	outputEnable logisim.ReadOnlyBus
-	clk          logisim.TriggerLine
+	clk          logisim.Clock
 
 	contents []uint64
 }
 
-func NewRom(addr logisim.ReadOnlyBus, data logisim.Bus, outputEnable logisim.ReadOnlyBus, clk logisim.TriggerLine, contents []uint64) *Rom {
+func NewRom(addr logisim.ReadOnlyBus, data logisim.Bus, outputEnable logisim.ReadOnlyBus, clk logisim.Clock, contents []uint64) *Rom {
 	if outputEnable.Width() != 1 {
 		panic("FU")
 	}
@@ -29,29 +30,33 @@ func NewRom(addr logisim.ReadOnlyBus, data logisim.Bus, outputEnable logisim.Rea
 		clk:          clk,
 		contents:     contents,
 	}
-	clk.OnRisingEdge(rom.onTick)
+	clk.OnWrite(rom.onWrite)
 	return rom
 }
 
-func (r *Rom) onTick() {
+func (r *Rom) onWrite() {
 	status := r.outputEnable.Read()
-	addr := r.addr.Read()
 	if status == 0x01 {
-		r.data.Write(r.contents[addr])
+		r.data.Write(r.contents[r.addrLatch])
 	}
+}
+
+func (r *Rom) onRead() {
+	r.addrLatch = r.addr.Read()
 }
 
 type Ram struct {
 	addr         logisim.ReadOnlyBus
+	addrLatch    uint64
 	data         logisim.Bus
 	writeEnable  logisim.ReadOnlyBus
 	outputEnable logisim.ReadOnlyBus
-	clk          logisim.TriggerLine
+	clk          logisim.Clock
 
 	contents []uint64
 }
 
-func NewRam(addr logisim.ReadOnlyBus, data logisim.Bus, writeEnable, outputEnable logisim.ReadOnlyBus, clk logisim.TriggerLine) *Ram {
+func NewRam(addr logisim.ReadOnlyBus, data logisim.Bus, writeEnable, outputEnable logisim.ReadOnlyBus, clk logisim.Clock) *Ram {
 	ram := &Ram{
 		addr:         addr,
 		data:         data,
@@ -60,16 +65,21 @@ func NewRam(addr logisim.ReadOnlyBus, data logisim.Bus, writeEnable, outputEnabl
 		clk:          clk,
 		contents:     make([]uint64, 1<<uint64(addr.Width())),
 	}
-	clk.OnRisingEdge(ram.onTick)
+	clk.OnWrite(ram.onWrite)
+	clk.OnRead(ram.onRead)
 	return ram
 }
 
-func (r *Ram) onTick() {
-	addr := r.addr.Read()
+func (r *Ram) onWrite() {
 	if r.outputEnable.Read() == 1 {
-		r.data.Write(r.contents[addr])
-	} else if r.writeEnable.Read() == 1 {
-		r.contents[addr] = r.data.Read()
+		r.data.Write(r.contents[r.addrLatch])
+	}
+}
+
+func (r *Ram) onRead() {
+	r.addrLatch = r.addr.Read()
+	if r.writeEnable.Read() == 1 {
+		r.contents[r.addrLatch] = r.data.Read()
 	}
 }
 
@@ -94,9 +104,18 @@ const MEM_OE = 0
 const MEM_WE = 1
 
 func main() {
-	clkLine := logisim.NewTriggerLine()
-	clk := logisim.NewClock(clkLine)
+	falseBusBit := logisim.NewBusLiteral(1, 0)
+	trueBusBit := logisim.NewBusLiteral(1, 1)
 
+	clkLine := logisim.NewClock()
+	clk := clkLine // Workaround
+
+	microInstNum := logisim.NewBus(7)
+	microInstContents := make([]uint64, 1<<uint64(microInstNum.Width()))
+	microInstContents[0] = 1 << MAR_WE
+	microInstContents[1] = 1<<MEM_OE | 1<<IRE_WE
+	microInstContents[4] = 1 << MIC_RE
+	//microInstContents := []uint64{1 << MAR_WE, 1 << MIC_RE}
 	controlWord := logisim.NewBus(20)
 	addr := logisim.NewBus(7)
 	data := logisim.NewBus(8)
